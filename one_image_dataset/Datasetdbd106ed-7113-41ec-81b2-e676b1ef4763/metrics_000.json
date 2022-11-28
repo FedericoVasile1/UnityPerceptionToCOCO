@@ -1,0 +1,56 @@
+{
+  "version": "0.0.1",
+  "metrics": [
+    {
+      "capture_id": null,
+      "annotation_id": null,
+      "sequence_id": "1d3d6dc5-c196-4d41-974d-2166f2eca8b7",
+      "step": 0,
+      "metric_definition": "scenario_iteration",
+      "values": [
+        0
+      ]
+    },
+    {
+      "capture_id": "5d908da5-dc89-4784-a6ac-d6020e1f7d38",
+      "annotation_id": null,
+      "sequence_id": "1d3d6dc5-c196-4d41-974d-2166f2eca8b7",
+      "step": 0,
+      "metric_definition": "RenderedObjectInfo",
+      "values": [
+        {
+          "label_id": 2,
+          "instance_id": 2,
+          "instance_color": {
+            "r": 0,
+            "g": 74,
+            "b": 255,
+            "a": 255
+          },
+          "visible_pixels": 1071
+        },
+        {
+          "label_id": 1,
+          "instance_id": 1,
+          "instance_color": {
+            "r": 255,
+            "g": 0,
+            "b": 0,
+            "a": 255
+          },
+          "visible_pixels": 10674
+        }
+      ]
+    },
+    {
+      "capture_id": null,
+      "annotation_id": null,
+      "sequence_id": "1d3d6dc5-c196-4d41-974d-2166f2eca8b7",
+      "step": 0,
+      "metric_definition": "random-seed",
+      "values": [
+        539662089
+      ]
+    }
+  ]
+}
