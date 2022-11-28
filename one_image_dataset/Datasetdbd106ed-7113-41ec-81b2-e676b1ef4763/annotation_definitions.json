@@ -1,0 +1,110 @@
+{
+  "version": "0.0.1",
+  "annotation_definitions": [
+    null,
+    {
+      "id": "bounding box",
+      "name": "bounding box",
+      "description": "Produces 2D bounding box annotations for all visible objects that bear a label defined in this labeler's associated label configuration.",
+      "format": "json",
+      "spec": [
+        {
+          "label_id": 1,
+          "label_name": "large_diameter"
+        },
+        {
+          "label_id": 2,
+          "label_name": "sphere_4fingers"
+        },
+        {
+          "label_id": 3,
+          "label_name": "tripod"
+        },
+        {
+          "label_id": 4,
+          "label_name": "medium_wrap"
+        },
+        {
+          "label_id": 5,
+          "label_name": "object_part"
+        },
+        {
+          "label_id": 6,
+          "label_name": "prismatic_4fingers"
+        },
+        {
+          "label_id": 7,
+          "label_name": "power_sphere"
+        },
+        {
+          "label_id": 8,
+          "label_name": "adducted_thumb"
+        },
+        {
+          "label_id": 9,
+          "label_name": "prismatic_2fingers"
+        },
+        {
+          "label_id": 10,
+          "label_name": "power_disk"
+        },
+        {
+          "label_id": 11,
+          "label_name": "small_diameter"
+        }
+      ]
+    },
+    {
+      "id": "instance segmentation",
+      "name": "instance segmentation",
+      "description": "Produces an instance segmentation image for each frame. The image will render the pixels of each labeled object in a distinct color.",
+      "format": "PNG",
+      "spec": [
+        {
+          "label_id": 1,
+          "label_name": "large_diameter"
+        },
+        {
+          "label_id": 2,
+          "label_name": "sphere_4fingers"
+        },
+        {
+          "label_id": 3,
+          "label_name": "tripod"
+        },
+        {
+          "label_id": 4,
+          "label_name": "medium_wrap"
+        },
+        {
+          "label_id": 5,
+          "label_name": "object_part"
+        },
+        {
+          "label_id": 6,
+          "label_name": "prismatic_4fingers"
+        },
+        {
+          "label_id": 7,
+          "label_name": "power_sphere"
+        },
+        {
+          "label_id": 8,
+          "label_name": "adducted_thumb"
+        },
+        {
+          "label_id": 9,
+          "label_name": "prismatic_2fingers"
+        },
+        {
+          "label_id": 10,
+          "label_name": "power_disk"
+        },
+        {
+          "label_id": 11,
+          "label_name": "small_diameter"
+        }
+      ]
+    }
+  ]
+}

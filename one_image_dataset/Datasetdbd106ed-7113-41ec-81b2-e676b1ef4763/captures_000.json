@@ -1,0 +1,133 @@
+{
+  "version": "0.0.1",
+  "captures": [
+    {
+      "id": "5d908da5-dc89-4784-a6ac-d6020e1f7d38",
+      "sequence_id": "1d3d6dc5-c196-4d41-974d-2166f2eca8b7",
+      "step": 0,
+      "timestamp": 0.0,
+      "sensor": {
+        "sensor_id": "camera",
+        "ego_id": "ego",
+        "modality": "camera",
+        "translation": [
+          57.5184975,
+          3.457805,
+          0.9740519
+        ],
+        "rotation": [
+          0.04364717,
+          0.7999217,
+          -0.0586167,
+          0.595637739
+        ],
+        "camera_intrinsic": [
+          [
+            12.26239,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            16.3498535,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            -1.020202
+          ]
+        ],
+        "projection": "perspective"
+      },
+      "ego": {
+        "ego_id": "ego",
+        "translation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "velocity": null,
+        "acceleration": null
+      },
+      "filename": "RGB8f3c23c8-2e77-4789-8d88-4dae68bf6c0c/rgb_2.png",
+      "format": "PNG",
+      "annotations": [
+        {
+          "id": "bounding box",
+          "annotation_definition": "bounding box",
+          "values": [
+            {
+              "label_id": 2,
+              "label_name": "sphere_4fingers",
+              "instance_id": 2,
+              "x": 289.0,
+              "y": 216.0,
+              "width": 60.0,
+              "height": 20.0
+            },
+            {
+              "label_id": 1,
+              "label_name": "large_diameter",
+              "instance_id": 1,
+              "x": 287.0,
+              "y": 233.0,
+              "width": 68.0,
+              "height": 181.0
+            }
+          ]
+        },
+        {
+          "id": "instance segmentation",
+          "annotation_definition": "instance segmentation",
+          "filename": "InstanceSegmentation0841deec-6ad4-4213-8509-3c139a837f5a/Instance_2.png",
+          "values": [
+            {
+              "instance_id": 2,
+              "color": {
+                "r": 0,
+                "g": 74,
+                "b": 255,
+                "a": 255
+              }
+            },
+            {
+              "instance_id": 1,
+              "color": {
+                "r": 255,
+                "g": 0,
+                "b": 0,
+                "a": 255
+              }
+            }
+          ]
+        },
+        {
+          "grasp_type_values": {
+            "object_name": "tube",
+            "instance_name": "001_chips_can",
+            "texture_name": "Original",
+            "grasp_type_name": "sphere_4fingers",
+            "preshape_name": "power_no3",
+            "view_type_name": "Wrist",
+            "object_side": "none",
+            "no_pronation_supination": true,
+            "upside_down": false,
+            "sampling_upside_down": false
+          },
+          "annotation_id": "grasp type",
+          "model_type": "GraspTypeAnnotationDefinition",
+          "description": "Produces grasp type annotation for the sequence",
+          "sensor_id": "camera",
+          "id": "grasp type"
+        }
+      ]
+    }
+  ]
+}
