@@ -1,6 +1,6 @@
 # Convert from [Unity Perception](https://github.com/Unity-Technologies/com.unity.perception) to COCO labeling
 
-Unity Perception <b><= 0.11.2</b> stores labels and metadata in sequential `capture_*.json` files according to a certain format. One sample output is the following: 
+Unity Perception <b><= 0.11.2</b> stores labels and metadata in sequential `captures_*.json` files according to a certain format. One sample output is the following: 
 ```
 Perception_dataset_base_folder   
 |- Dataset*
