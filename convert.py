@@ -22,12 +22,11 @@ import argparse
 import glob
 import os
 import json
+import multiprocessing
 
 import cv2
 import numpy as np
-from PIL import Image
-from skimage import measure
-from shapely.geometry import Polygon
+from pycocotools.mask import encode as mask_to_rle
 
 
 def get_folders(input_dataset_path):
@@ -59,6 +58,7 @@ def create_coco_json():
 def check_annotations(dataset_folder):
     with open(os.path.join(dataset_folder, 'annotation_definitions.json')) as f:
         annotations_definition = json.load(f)['annotation_definitions']
+
     flag = False
     for ann in annotations_definition:
         if ann is not None and ann['id'] == 'instance segmentation':
@@ -66,6 +66,14 @@ def check_annotations(dataset_folder):
             break
     if not flag:
         raise Exception('No annotation with id \'instance segmentation\' found')
+
+    flag = False
+    for ann in annotations_definition:
+        if ann is not None and ann['id'] == 'bounding box':
+            flag = True
+            break
+    if not flag:
+        raise Exception('No annotation with id \'bounding box\' found')
 
     with open(os.path.join(dataset_folder, 'metric_definitions.json')) as f:
         metric_definition = json.load(f)['metric_definitions']
@@ -82,12 +90,40 @@ def get_ids(dataset_folder):
     with open(os.path.join(dataset_folder, 'metric_definitions.json')) as f:
         metric_definitions = json.load(f)['metric_definitions']
 
+    # get the category id to name mapping from the RenderedObjectInfo annotator
     category_id_to_category_name = {}
     for met_infos in metric_definitions:
         if met_infos is not None and met_infos['id'] == 'RenderedObjectInfo':
             for cat in met_infos['spec']:
                 category_id_to_category_name[int(cat['label_id'])] = cat['label_name']
             break
+
+    # check that the category id to category name mapping is coherent with 
+    # the one defined in the bounding box annotator and in the 
+    # instance segmentation annotator
+    with open(os.path.join(dataset_folder, 'annotation_definitions.json')) as f:
+        annotation_definitions = json.load(f)['annotation_definitions']
+    appo = {}
+    for ann_infos in annotation_definitions:
+        if ann_infos is not None and ann_infos['id'] == 'bounding box':
+            for cat in ann_infos['spec']:
+                appo[int(cat['label_id'])] = cat['label_name']
+            break
+    if category_id_to_category_name != appo:
+        raise Exception('The category id to category name mapping defined '
+                        'by the RenderedObjectInfo annotator is different '
+                        'from the one defined by the bounding box annotator')
+    appo = {}
+    for ann_infos in annotation_definitions:
+        if ann_infos is not None and ann_infos['id'] == 'instance segmentation':
+            for cat in ann_infos['spec']:
+                appo[int(cat['label_id'])] = cat['label_name']
+            break
+    if category_id_to_category_name != appo:
+        raise Exception('The category id to category name mapping defined '
+                        'by the RenderedObjectInfo annotator is different '
+                        'from the one defined by the instance segmentation '
+                        'annotator')
     
     instance_id_to_category_id = {}
     instance_color_to_instance_id = {}
@@ -162,6 +198,9 @@ def fill_coco_images(dataset_folder, coco_json):
             img['file_name'] = os.path.basename(cap['filename'])
             img['coco_url'] = ''
             if width is None and height is None:
+                # TODO: in case the images of the dataset have all the same 
+                #       dimesion, comment this line and hard-code the values
+                #       to speed up processing 
                 height, width, _ = cv2.imread(
                     os.path.join(os.path.dirname(dataset_folder), cap['filename'])
                 ).shape
@@ -181,21 +220,14 @@ def fill_coco_images(dataset_folder, coco_json):
     return coco_json
 
 
-def create_annotation_format(polygon, segmentation, image_id, category_id, annotation_id):
+def create_annotation_format_nobbox(segmentation, image_id, category_id, annotation_id):
     # Taken from https://github.com/chrise96/image-to-coco-json-converter
-
-    min_x, min_y, max_x, max_y = polygon.bounds
-    width = max_x - min_x
-    height = max_y - min_y
-    bbox = (min_x, min_y, width, height)
-    area = polygon.area
-
     annotation = {
         "segmentation": segmentation,
-        "area": area,
+        "area": 0,  # TODO
         "iscrowd": 0,
         "image_id": image_id,
-        "bbox": bbox,
+        "bbox": [], # TODO
         "category_id": category_id,
         "id": annotation_id
     }
@@ -203,140 +235,175 @@ def create_annotation_format(polygon, segmentation, image_id, category_id, annot
     return annotation
 
 
-def create_sub_masks(mask_image, width, height):
+def create_annotation_format(segmentation, area, image_id, bbox, 
+                             category_id, annotation_id):
     # Taken from https://github.com/chrise96/image-to-coco-json-converter
+    annotation = {
+        "segmentation": segmentation,
+        "area": area,  # TODO
+        "iscrowd": 0,
+        "image_id": image_id,
+        "bbox": bbox, # TODO
+        "category_id": category_id,
+        "id": annotation_id
+    }
 
-    # Initialize a dictionary of sub-masks indexed by RGB colors
-    sub_masks = {}
-    for x in range(width):
-        for y in range(height):
-            # Get the RGB values of the pixel
-            pixel = mask_image.getpixel((x,y))[:3]
-
-            # Check to see if we have created a sub-mask...
-            pixel_str = str(pixel)
-            sub_mask = sub_masks.get(pixel_str)
-            if sub_mask is None:
-               # Create a sub-mask (one bit per pixel) and add to the dictionary
-                # Note: we add 1 pixel of padding in each direction
-                # because the contours module doesn"t handle cases
-                # where pixels bleed to the edge of the image
-                sub_masks[pixel_str] = Image.new("1", (width+2, height+2))
-
-            # Set the pixel value to 1 (default is 0), accounting for padding
-            sub_masks[pixel_str].putpixel((x+1, y+1), 1)
-
-    return sub_masks
+    return annotation
 
 
-def create_sub_mask_annotation(sub_mask, mask_path, img_path):
-    # Taken from https://github.com/chrise96/image-to-coco-json-converter
+def process_capture_file(
+    capture_filename, dataset_folder, instance_id_to_category_id, 
+    instance_color_to_instance_id
+):
+    with open(capture_filename, 'r') as f:
+        captures = json.load(f)['captures']
+    print('[INFO]: processing {}'.format(capture_filename))
 
-    # Find contours (boundary lines) around each sub-mask
-    # Note: there could be multiple contours if the object
-    # is partially occluded. (E.g. an elephant behind a tree)
-    contours = measure.find_contours(np.array(sub_mask), 0.5, positive_orientation="low")
+    annotations_list = []
+    # Iterate over each frame
+    for cap in captures:
+        image_id = int(
+            os.path.basename(cap['filename']).split('.')[0].split('_')[1]
+        )
 
-    polygons = []
-    segmentations = []
-    for contour in contours:
-        # Flip from (row, col) representation to (x, y)
-        # and subtract the padding pixel
-        for i in range(len(contour)):
-            row, col = contour[i]
-            contour[i] = (col - 1, row - 1)
-
-        # Make a polygon and simplify it
-        poly = Polygon(contour)
-        poly = poly.simplify(1.0, preserve_topology=False)
+        for elem_instseg in cap['annotations']:
+            if elem_instseg['id'] != 'instance segmentation':
+                continue
         
-        if(poly.is_empty):
-            # Go to next iteration, dont save empty values in list
-            continue
+            mask_path = os.path.join(
+                os.path.dirname(dataset_folder), elem_instseg['filename']
+            )
 
-        if poly.geom_type == 'MultiPolygon':
-            # see https://github.com/chrise96/image-to-coco-json-converter/issues/6
-            poly = poly.convex_hull
-            print('[WARNING]: the mask having path {} (associated to the '
-                  'image having path {}) has been converted from '
-                  'MultiPolygon to Polygon through convex_hull. It is '
-                  'suggested to visualize back the obtained segmentation '
-                  'onto the image to check whether it is reasonable.'
-                  .format(mask_path, img_path))
+            mask = cv2.imread(mask_path)
+            dims = np.nonzero(mask)
+            if dims[0].size == 0 and dims[1].size == 0 and dims[2].size == 0:
+                # mask is all black, i.e., no annotations
+                continue
+            mask = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)
+            assert mask.shape[-1] == 3, mask_path  # RGB
+            assert mask.ndim == 3, mask_path       # H, W, C
+            assert mask.max() > 1, mask_path # be sure that we are in [0, 255] instead of [0, 1] range
 
-        polygons.append(poly)
+            # TODO: take all the possible colors available in the dataset
+            #       from the metadata, then perform the product between 
+            #       the mask image and all the colors, keep only the 
+            #       non-zero binary images
+            unique_colors = np.unique(
+                mask.reshape(-1, mask.shape[2]), axis=0
+            )
 
-        segmentation = np.array(poly.exterior.coords).ravel().tolist()
-        segmentations.append(segmentation)
-    
-    return polygons, segmentations
+            for u_q in unique_colors:
+                if (u_q == [0, 0, 0]).all():    # TODO according to the todo above
+                    continue
+                
+                bin_mask = (mask == u_q).prod(axis=-1).astype('uint8')
+                segmentation = mask_to_rle(np.asfortranarray(bin_mask))
+                segmentation['counts'] = segmentation['counts'].decode()
+
+                category_id = instance_id_to_category_id[
+                    instance_color_to_instance_id[str(tuple(u_q.tolist()))]
+                ]
+
+                ##  We need to get also the bounding box annotation 
+
+                # 1. Get the current instance_id given the color
+                cur_instance_id = None
+                for single_inst in elem_instseg['values']:
+                    color = [
+                        single_inst['color']['r'], 
+                        single_inst['color']['g'], 
+                        single_inst['color']['b']
+                    ]
+                    if (u_q == color).all():
+                        cur_instance_id = single_inst['instance_id']
+                        break
+                if cur_instance_id is None:
+                    raise Exception(
+                        'Instance color not found. {} {}'
+                        .format(u_q, elem_instseg['values'])
+                    )
+
+                # 2. Search for the instance_id in the bounding box field and 
+                #    get the bounding box values
+                x, y, width, height = None, None, None, None
+                for elem_bbox in cap['annotations']:
+                    if elem_bbox['id'] != 'bounding box':
+                        continue
+
+                    for bbox_instances in elem_bbox['values']:
+                        if bbox_instances['instance_id'] == cur_instance_id:
+                            x, y, width, height = (
+                                bbox_instances['x'],
+                                bbox_instances['y'],
+                                bbox_instances['width'],
+                                bbox_instances['height'],
+                            ) 
+                    if (x, y, width, height) == (None, None, None, None):
+                        raise Exception(
+                            'No correspondence found between the instance_id '
+                            'given by the instance segmentation annotator and '
+                            'the one given by the bounding box annotator. {} {}'
+                            .format(cur_instance_id, elem_bbox['values'])
+                        )
+
+                # For the moment, set every annotation to zero (we cannot 
+                # obtain a sequantial number here since this functional
+                # is executed in parallel by many processes), we will fix it 
+                # later when outside of the multiprocessing
+                fake_ann_counter = 0     
+
+                bbox = [x, y, width, height]
+                area = int(width * height)
+                annotation = create_annotation_format(
+                    segmentation, area, image_id, bbox, category_id, 
+                    fake_ann_counter
+                )
+
+                annotations_list += annotation,
+
+    return annotations_list
+
+
+def callback_process_capture_file(annotations_list):
+    global coco_annotations_field
+    coco_annotations_field += annotations_list
 
 
 def fill_coco_annotations(dataset_folder, coco_json, 
                           instance_id_to_category_id, 
                           instance_color_to_instance_id):
-    annotations = []
-    ann_counter = 0
+
+    ## 1. Read mask images and convert coco annotation
+
+    pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
+
+    # Sorry for the "global" man..  =)
+    global coco_annotations_field
+    coco_annotations_field = []
 
     captures_files_list = glob.glob(
         os.path.join(dataset_folder, 'captures_*.json')
     )
-    # captures_files_list.sort()
-    for i in range(len(captures_files_list)):    
-        # I'm not sure the captures.sort() works as I want it in any case, 
-        # therefore construct the correct filename by myself 
-        cap_filename = 'captures_' + str(i).zfill(3) + '.json'
-        appo = os.path.basename(captures_files_list[i])
-        cap_filename = captures_files_list[i].replace(appo, cap_filename)
-        with open(cap_filename, 'r') as f:
-            captures = json.load(f)['captures']
+    for c_f_l in captures_files_list:
+        pool.apply_async(
+            process_capture_file, 
+            args=(
+                c_f_l, dataset_folder, instance_id_to_category_id, 
+                instance_color_to_instance_id
+            ),
+            callback=callback_process_capture_file
+        )
+    pool.close()
+    pool.join()
 
-        print('[INFO]: processing {}'.format(cap_filename))
-        # Iterate over each frame
-        for cap in captures:
-            image_id = int(
-                os.path.basename(cap['filename']).split('.')[0].split('_')[1]
-            )
+    ## 2. Assign sequential id to annotations (since process_capture_file 
+    ## had assigned zero to each)
+    for idx, ann in enumerate(coco_annotations_field):
+        ann['id'] = idx
 
-            for elem in cap['annotations']:
-                if elem['id'] != 'instance segmentation':
-                    continue
-            
-                img_path = os.path.join(
-                    os.path.dirname(dataset_folder), cap['filename']
-                )
-                mask_path = os.path.join(
-                    os.path.dirname(dataset_folder), elem['filename']
-                )
-                mask = Image.open(mask_path).convert('RGB')
-                w, h = mask.size
+    coco_json['annotations'] = coco_annotations_field
+    del coco_annotations_field
 
-                sub_masks = create_sub_masks(mask, w, h)
-                black_color = '(0, 0, 0)'
-                if black_color in sub_masks:
-                    del sub_masks['(0, 0, 0)']      # delete background 
-                for color, sub_mask in sub_masks.items():
-                    category_id = instance_id_to_category_id[
-                        instance_color_to_instance_id[color]
-                    ]
-                    polygons, _ = create_sub_mask_annotation(
-                        sub_mask, mask_path, img_path
-                    )
-                    for i in range(len(polygons)):
-                        # Cleaner to recalculate this variable
-                        segmentation = [
-                            np.array(polygons[i].exterior.coords).ravel().tolist()
-                        ]
-                        annotation = create_annotation_format(
-                            polygons[i], segmentation, image_id, 
-                            category_id, ann_counter
-                        )
-                        
-                        # Fastest way to add elem to list
-                        annotations += annotation,
-                        ann_counter += 1
-
-    coco_json['annotations'] = annotations
     return coco_json
 
 

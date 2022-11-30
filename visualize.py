@@ -1,17 +1,20 @@
 import argparse
 import os
-import random
+import random as rndm
 
 import matplotlib.pyplot as plt
+import numpy as np
 from pycocotools.coco import COCO
 
 
-def main(images_dir, coco_file, num_imgs_to_show, show_bbox, show_text_labels):
+def main(images_dir, coco_file, num_imgs_to_show, show_bbox, show_text_labels,
+         random):
     coco = COCO(coco_file)
     
-    rand_ids = list(coco.imgs.keys())
-    rand_ids = random.sample(rand_ids, num_imgs_to_show)
-    for img_infos in coco.loadImgs(ids=rand_ids):
+    ids = list(coco.imgs.keys())
+    if random:
+        ids = rndm.sample(ids, num_imgs_to_show)
+    for img_infos in coco.loadImgs(ids=ids):
         img = plt.imread(os.path.join(images_dir, img_infos['file_name']))
 
         _, ax = plt.subplots(figsize=(10, 8))
@@ -35,7 +38,8 @@ if __name__ == '__main__':
     parser.add_argument('--num_imgs_to_show', type=int, default=1)
     parser.add_argument('--show_bbox', action='store_true')
     parser.add_argument('--show_text_labels', action='store_true')
+    parser.add_argument('--random', action='store_true')
     args = parser.parse_args()
 
     main(args.images_dir, args.coco_file, args.num_imgs_to_show, 
-         args.show_bbox, args.show_text_labels)
+         args.show_bbox, args.show_text_labels, args.random)
