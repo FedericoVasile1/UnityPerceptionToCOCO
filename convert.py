@@ -220,30 +220,15 @@ def fill_coco_images(dataset_folder, coco_json):
     return coco_json
 
 
-def create_annotation_format_nobbox(segmentation, image_id, category_id, annotation_id):
-    # Taken from https://github.com/chrise96/image-to-coco-json-converter
-    annotation = {
-        "segmentation": segmentation,
-        "area": 0,  # TODO
-        "iscrowd": 0,
-        "image_id": image_id,
-        "bbox": [], # TODO
-        "category_id": category_id,
-        "id": annotation_id
-    }
-
-    return annotation
-
-
 def create_annotation_format(segmentation, area, image_id, bbox, 
                              category_id, annotation_id):
     # Taken from https://github.com/chrise96/image-to-coco-json-converter
     annotation = {
         "segmentation": segmentation,
-        "area": area,  # TODO
+        "area": area,
         "iscrowd": 0,
         "image_id": image_id,
-        "bbox": bbox, # TODO
+        "bbox": bbox,
         "category_id": category_id,
         "id": annotation_id
     }
