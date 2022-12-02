@@ -1,5 +1,5 @@
 '''
-Custom script for my dataset
+CUSTOM SCRIPT FOR MY DATASET
 '''
 
 
@@ -26,8 +26,11 @@ def main(coco_filename):
     new_img_metadatas = []
     for idx, img_metadata in enumerate(coco_file['images']):
         if idx % NUM_FRAMES_IN_VIDEO == 0:
-            start_frame = np.random.randint(FIRST_FRAME_RANGE, STEP_TO_EXTRACT_FRAMES)
-            idxs = [start_frame+STEP_TO_EXTRACT_FRAMES*i for i in range(NUM_FRAMES_TO_EXTRACT_FROM_VIDEO)]
+            start_frame = np.random.randint(
+                FIRST_FRAME_RANGE, STEP_TO_EXTRACT_FRAMES
+            )
+            idxs = [start_frame+STEP_TO_EXTRACT_FRAMES*i 
+                    for i in range(NUM_FRAMES_TO_EXTRACT_FROM_VIDEO)]
         
         if idx % NUM_FRAMES_IN_VIDEO not in idxs:
             continue
@@ -46,11 +49,11 @@ def main(coco_filename):
 
     coco_file['annotations'] = new_ann_metadatas
 
-    new_coco_filename = os.path.basename(coco_filename)
-    new_coco_filename = coco_filename.replace(
-        new_coco_filename, 'downsampled_'+new_coco_filename
-    )
-    with open(new_coco_filename, 'w') as f:
+    json_filename = os.path.basename(coco_filename)
+    new_json_filename = os.path.splitext(json_filename)[0] + \
+        '_downsampled' + os.path.splitext(json_filename)[1]
+    full_path = coco_filename.replace(json_filename, new_json_filename)
+    with open(full_path, 'w') as f:
         json.dump(coco_file, f)
 
 

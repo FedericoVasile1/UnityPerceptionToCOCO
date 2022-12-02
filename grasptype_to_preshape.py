@@ -33,7 +33,7 @@ if __name__ == '__main__':
 
     grasp_type_id_to_grasp_type = {}
 
-    category_to_remove = 'object_part'
+    CATEGORIES_TO_REMOVE = ['object_part']
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--coco_file', required=True)
@@ -65,16 +65,15 @@ if __name__ == '__main__':
 
     idsx_to_del = []
     for i, n_c in enumerate(new_cats):
-        if n_c['name'] in category_to_remove:
+        if n_c['name'] in CATEGORIES_TO_REMOVE:
             idsx_to_del.append(i)
-    for i_t_d in idsx_to_del:
-        del new_cats[i_t_d]
+    new_cats = [v for idx, v in enumerate(new_cats) if idx not in idsx_to_del]
 
     coco['categories'] = new_cats
 
     new_anns = []
     for ann in coco['annotations']:
-        if grasp_type_id_to_grasp_type[ann['category_id']] == category_to_remove:
+        if grasp_type_id_to_grasp_type[ann['category_id']] in CATEGORIES_TO_REMOVE:
             continue
 
         ann['category_id'] = grasp_type_id_to_preshape_id[ann['category_id']]
@@ -83,8 +82,14 @@ if __name__ == '__main__':
     coco['annotations'] = new_anns
 
     json_filename = os.path.basename(args.coco_file)
-    new_json_filename = args.coco_file.replace(
-        json_filename, 'preshape_'+json_filename
+    if 'grasptype' in json_filename:
+        new_json_filename = json_filename.replace('grasptype', 'preshape')
+    else:
+        raise Exception('Expected to find \'grasptype\' in the json file '
+                        'name (e.g., coco_train_grasptype.json), '
+                        'but not found: {}'.format(json_filename))
+    full_path = args.coco_file.replace(
+        json_filename, new_json_filename
     )
-    with open(new_json_filename, 'w') as outfile:
+    with open(full_path, 'w') as outfile:
         json.dump(coco, outfile)
