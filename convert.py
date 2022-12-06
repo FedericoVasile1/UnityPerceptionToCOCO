@@ -213,6 +213,17 @@ def fill_coco_images(dataset_folder, coco_json):
                 os.path.basename(cap['filename']).split('.')[0].split('_')[1]
             )
 
+            # Add here some image-level metadata given by my custom annotator
+            for ann in cap['annotations']:
+                if ann['id'] != 'grasp type':
+                    continue
+                img['instance_name'] = ann['grasp_type_values']['instance_name']
+                img['grasp_type'] = ann['grasp_type_values']['grasp_type_name'].split('[')[0]
+                img['preshape'] = ann['grasp_type_values']['preshape_name'].split('[')[0]
+                img['step'] = int(cap['step'])   # the frame idx within the video. 0 to 89 in my case
+                break
+
+
             # Fastest way to add elem to list
             images += img,
 
