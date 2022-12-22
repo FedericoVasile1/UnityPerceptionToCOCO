@@ -1,7 +1,4 @@
 # Dataset structure as saved by Unity Perception package: 
-#      Perception_dataset_base_folder   
-#      |- Dataset*
-#      |   |- captures_000.json
 #      |   |- captures_001.json
 #      |   |- captures_*.json
 #      |   |- annotation_definitions.json
@@ -91,6 +88,7 @@ def get_ids(dataset_folder):
         metric_definitions = json.load(f)['metric_definitions']
 
     # get the category id to name mapping from the RenderedObjectInfo annotator
+    # (specifically, with category we mean the grasp type)
     category_id_to_category_name = {}
     for met_infos in metric_definitions:
         if met_infos is not None and met_infos['id'] == 'RenderedObjectInfo':
@@ -218,11 +216,11 @@ def fill_coco_images(dataset_folder, coco_json):
                 if ann['id'] != 'grasp type':
                     continue
                 img['instance_name'] = ann['grasp_type_values']['instance_name']
-                img['grasp_type'] = ann['grasp_type_values']['grasp_type_name'].split('[')[0]
-                img['preshape'] = ann['grasp_type_values']['preshape_name'].split('[')[0]
+                img['grasp_type'] = ann['grasp_type_values']['grasp_type_name']
+                img['object_side'] = ann['grasp_type_values']['object_side']
+                img['preshape'] = ann['grasp_type_values']['preshape_name']
                 img['step'] = int(cap['step'])   # the frame idx within the video. 0 to 89 in my case
                 break
-
 
             # Fastest way to add elem to list
             images += img,
@@ -249,7 +247,7 @@ def create_annotation_format(segmentation, area, image_id, bbox,
 
 def process_capture_file(
     capture_filename, dataset_folder, instance_id_to_category_id, 
-    instance_color_to_instance_id
+    instance_color_to_instance_id, category_id_to_category_name
 ):
     with open(capture_filename, 'r') as f:
         captures = json.load(f)['captures']
@@ -258,119 +256,136 @@ def process_capture_file(
     annotations_list = []
     # Iterate over each frame
     for cap in captures:
+        grasp_type_ann = None
+        inst_segm_ann = None
+        for ann in cap['annotations']:
+            if ann['id'] == 'instance segmentation':
+                inst_segm_ann = ann
+            elif ann['id'] == 'grasp type':
+                grasp_type_ann = ann
+        assert grasp_type_ann is not None and inst_segm_ann is not None
+
+        video_target = grasp_type_ann['grasp_type_values']['grasp_type_name']
+        if grasp_type_ann['grasp_type_values']['object_side'] != 'none':
+            video_target += \
+                '[{}]'.format(grasp_type_ann['grasp_type_values']['object_side'])
+
         image_id = int(
             os.path.basename(cap['filename']).split('.')[0].split('_')[1]
         )
 
-        for elem_instseg in cap['annotations']:
-            if elem_instseg['id'] != 'instance segmentation':
+        mask_path = os.path.join(
+            os.path.dirname(dataset_folder), inst_segm_ann['filename']
+        )
+
+        mask = cv2.imread(mask_path)
+        dims = np.nonzero(mask)
+        if dims[0].size == 0 and dims[1].size == 0 and dims[2].size == 0:
+            # mask is all black, i.e., no annotations
+            continue
+        mask = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)
+        assert mask.shape[-1] == 3, mask_path  # RGB
+        assert mask.ndim == 3, mask_path       # H, W, C
+        assert mask.max() > 1, mask_path # be sure that we are in [0, 255] instead of [0, 1] range
+
+        # TODO: take all the possible colors available in the dataset
+        #       from the metadata, then perform the product between 
+        #       the mask image and all the colors, keep only the 
+        #       non-zero binary images
+        unique_colors = np.unique(
+            mask.reshape(-1, mask.shape[2]), axis=0
+        )
+
+        for u_q in unique_colors:
+            if (u_q == [0, 0, 0]).all():    # TODO according to the todo above
                 continue
-        
-            mask_path = os.path.join(
-                os.path.dirname(dataset_folder), elem_instseg['filename']
-            )
+            
+            bin_mask = (mask == u_q).prod(axis=-1).astype('uint8')
+            segmentation = mask_to_rle(np.asfortranarray(bin_mask))
+            segmentation['counts'] = segmentation['counts'].decode()
 
-            mask = cv2.imread(mask_path)
-            dims = np.nonzero(mask)
-            if dims[0].size == 0 and dims[1].size == 0 and dims[2].size == 0:
-                # mask is all black, i.e., no annotations
-                continue
-            mask = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)
-            assert mask.shape[-1] == 3, mask_path  # RGB
-            assert mask.ndim == 3, mask_path       # H, W, C
-            assert mask.max() > 1, mask_path # be sure that we are in [0, 255] instead of [0, 1] range
+            category_id = instance_id_to_category_id[
+                instance_color_to_instance_id[str(tuple(u_q.tolist()))]
+            ]
+            ##  We need to get also the bounding box annotation 
 
-            # TODO: take all the possible colors available in the dataset
-            #       from the metadata, then perform the product between 
-            #       the mask image and all the colors, keep only the 
-            #       non-zero binary images
-            unique_colors = np.unique(
-                mask.reshape(-1, mask.shape[2]), axis=0
-            )
-
-            for u_q in unique_colors:
-                if (u_q == [0, 0, 0]).all():    # TODO according to the todo above
-                    continue
-                
-                bin_mask = (mask == u_q).prod(axis=-1).astype('uint8')
-                segmentation = mask_to_rle(np.asfortranarray(bin_mask))
-                segmentation['counts'] = segmentation['counts'].decode()
-
-                category_id = instance_id_to_category_id[
-                    instance_color_to_instance_id[str(tuple(u_q.tolist()))]
+            # 1. Get the current instance_id given the color
+            cur_instance_id = None
+            for single_inst in inst_segm_ann['values']:
+                color = [
+                    single_inst['color']['r'], 
+                    single_inst['color']['g'], 
+                    single_inst['color']['b']
                 ]
-
-                ##  We need to get also the bounding box annotation 
-
-                # 1. Get the current instance_id given the color
-                cur_instance_id = None
-                for single_inst in elem_instseg['values']:
-                    color = [
-                        single_inst['color']['r'], 
-                        single_inst['color']['g'], 
-                        single_inst['color']['b']
-                    ]
-                    if (u_q == color).all():
-                        cur_instance_id = single_inst['instance_id']
-                        break
-                if cur_instance_id is None:
-                    raise Exception(
-                        'Instance color not found. {} {}'
-                        .format(u_q, elem_instseg['values'])
-                    )
-
-                # 2. Search for the instance_id in the bounding box field and 
-                #    get the bounding box values
-                x, y, width, height = None, None, None, None
-                for elem_bbox in cap['annotations']:
-                    if elem_bbox['id'] != 'bounding box':
-                        continue
-
-                    for bbox_instances in elem_bbox['values']:
-                        if bbox_instances['instance_id'] == cur_instance_id:
-                            x, y, width, height = (
-                                bbox_instances['x'],
-                                bbox_instances['y'],
-                                bbox_instances['width'],
-                                bbox_instances['height'],
-                            ) 
-                    if (x, y, width, height) == (None, None, None, None):
-                        raise Exception(
-                            'No correspondence found between the instance_id '
-                            'given by the instance segmentation annotator and '
-                            'the one given by the bounding box annotator. {} {}'
-                            .format(cur_instance_id, elem_bbox['values'])
-                        )
-
-                # For the moment, set every annotation to zero (we cannot 
-                # obtain a sequantial number here since this functional
-                # is executed in parallel by many processes), we will fix it 
-                # later when outside of the multiprocessing
-                fake_ann_counter = 0     
-
-                bbox = [x, y, width, height]
-                area = int(width * height)
-                annotation = create_annotation_format(
-                    segmentation, area, image_id, bbox, category_id, 
-                    fake_ann_counter
+                if (u_q == color).all():
+                    cur_instance_id = single_inst['instance_id']
+                    break
+            if cur_instance_id is None:
+                raise Exception(
+                    'Instance color not found. {} {}'
+                    .format(u_q, ann['values'])
                 )
 
-                annotations_list += annotation,
+            # 2. Search for the instance_id in the bounding box field and 
+            #    get the bounding box values
+            x, y, width, height = None, None, None, None
+            for elem_bbox in cap['annotations']:
+                if elem_bbox['id'] != 'bounding box':
+                    continue
+
+                for bbox_instances in elem_bbox['values']:
+                    if bbox_instances['instance_id'] == cur_instance_id:
+                        x, y, width, height = (
+                            bbox_instances['x'],
+                            bbox_instances['y'],
+                            bbox_instances['width'],
+                            bbox_instances['height'],
+                        ) 
+                if (x, y, width, height) == (None, None, None, None):
+                    raise Exception(
+                        'No correspondence found between the instance_id '
+                        'given by the instance segmentation annotator and '
+                        'the one given by the bounding box annotator. {} {}'
+                        .format(cur_instance_id, elem_bbox['values'])
+                    )
+
+            # For the moment, set every annotation to zero (we cannot 
+            # obtain a sequantial number here since this functional
+            # is executed in parallel by many processes), we will fix it 
+            # later when outside of the multiprocessing
+            fake_ann_counter = 0     
+
+            bbox = [x, y, width, height]
+            area = int(width * height)
+            annotation = create_annotation_format(
+                segmentation, area, image_id, bbox, category_id, 
+                fake_ann_counter
+            )
+            annotation['is_video_target'] = \
+                True if category_id_to_category_name[category_id] == video_target else False
+
+            annotations_list += annotation,
 
     return annotations_list
 
 
 def callback_process_capture_file(annotations_list):
+    # No need to have a lock here, since the callback is executed by the main
+    # process (or, specifically, by the process in which the Pool 
+    # was created and the async processes were issued)
     global coco_annotations_field
     coco_annotations_field += annotations_list
 
 
 def fill_coco_annotations(dataset_folder, coco_json, 
                           instance_id_to_category_id, 
-                          instance_color_to_instance_id):
+                          instance_color_to_instance_id,
+                          category_id_to_category_name):
 
     ## 1. Read mask images and convert coco annotation
 
+    def error_callback(e):
+        print('AN ASYNC PROCESS THROWN THE FOLLOWING EXCEPTION:\n' + str(e))
     pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
 
     # Sorry for the "global" man..  =)
@@ -385,10 +400,12 @@ def fill_coco_annotations(dataset_folder, coco_json,
             process_capture_file, 
             args=(
                 c_f_l, dataset_folder, instance_id_to_category_id, 
-                instance_color_to_instance_id
+                instance_color_to_instance_id, category_id_to_category_name
             ),
-            callback=callback_process_capture_file
+            callback=callback_process_capture_file,
+            error_callback=error_callback
         )
+
     pool.close()
     pool.join()
 
@@ -419,7 +436,8 @@ def convert(input_dataset_path, output_coco_file):
 
     coco_json = fill_coco_annotations(dataset_folder, coco_json,
                                       instance_id_to_category_id,
-                                      instance_color_to_instance_id)
+                                      instance_color_to_instance_id,
+                                      category_id_to_category_name)
 
     with open(output_coco_file, 'w') as outfile:
         json.dump(coco_json, outfile)
