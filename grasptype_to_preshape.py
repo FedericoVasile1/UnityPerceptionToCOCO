@@ -1,6 +1,3 @@
-'''
-THIS IS JUST A SCRIPT FOR MY OWN LABELS, TO USE AFTER RUNNING convert.py
-'''
 import argparse
 import os
 import json
@@ -45,21 +42,23 @@ if __name__ == '__main__':
     new_cats = []
     cats = coco['categories']
     for c in cats:  
-        grasp_type_id_to_grasp_type[c['id']] = c['name']
+        grasp_type = c['name']
+        grasp_type_id_to_grasp_type[c['id']] = grasp_type
 
+        grasp_type_no_obj_side = grasp_type.split('[')[0]
         grasp_type_id_to_preshape_id[c['id']] = \
-            preshape_to_id[grasp_type_to_preshape[c['name']]]
+            preshape_to_id[grasp_type_to_preshape[grasp_type_no_obj_side]]
         
         flag = False
         for elem in new_cats:
-            if elem['name'] == grasp_type_to_preshape[c['name']]:
+            if elem['name'] == grasp_type_to_preshape[grasp_type_no_obj_side]:
                 flag = True
                 break
         if not flag:
             new_c = {
                 'supercategory': '',
-                'id': preshape_to_id[grasp_type_to_preshape[c['name']]],
-                'name': grasp_type_to_preshape[c['name']]
+                'id': preshape_to_id[grasp_type_to_preshape[grasp_type_no_obj_side]],
+                'name': grasp_type_to_preshape[grasp_type_no_obj_side]
             }
             new_cats.append(new_c)
 
