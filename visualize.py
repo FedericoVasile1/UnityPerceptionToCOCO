@@ -65,7 +65,10 @@ def main(images_dir, coco_file, num_imgs_to_show, random):
             )
 
         cv2.imshow('img', img)
-        cv2.waitKey()
+        key = cv2.waitKey(0)
+        if key == ord('q'):
+            cv2.destroyAllWindows()
+            exit(0)
 
 
 if __name__ == '__main__':
