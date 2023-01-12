@@ -263,12 +263,12 @@ def process_capture_file(
                 inst_segm_ann = ann
             elif ann['id'] == 'grasp type':
                 grasp_type_ann = ann
-        assert grasp_type_ann is not None and inst_segm_ann is not None
-
-        video_target = grasp_type_ann['grasp_type_values']['grasp_type_name']
-        if grasp_type_ann['grasp_type_values']['object_side'] != 'none':
-            video_target += \
-                '[{}]'.format(grasp_type_ann['grasp_type_values']['object_side'])
+        assert inst_segm_ann is not None
+        if grasp_type_ann is not None:
+            video_target = grasp_type_ann['grasp_type_values']['grasp_type_name']
+            if grasp_type_ann['grasp_type_values']['object_side'] != 'none':
+                video_target += \
+                    '[{}]'.format(grasp_type_ann['grasp_type_values']['object_side'])
 
         image_id = int(
             os.path.basename(cap['filename']).split('.')[0].split('_')[1]
@@ -361,8 +361,9 @@ def process_capture_file(
                 segmentation, area, image_id, bbox, category_id, 
                 fake_ann_counter
             )
-            annotation['is_video_target'] = \
-                True if category_id_to_category_name[category_id] == video_target else False
+            if grasp_type_ann is not None:
+                annotation['is_video_target'] = \
+                    True if category_id_to_category_name[category_id] == video_target else False
 
             annotations_list += annotation,
 
